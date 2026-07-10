@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>配線工事費 積算アプリ（材料費+労務費／鋳造工場 砂処理設備）</title>
+<style>
+  :root{
+    --main:#1a5276; --main2:#2e86c1; --bg:#f4f6f7; --line:#d5dbdb;
+    --warn:#c0392b; --ok:#1e8449; --sub:#eaf2f8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:"Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+    background:var(--bg); color:#222; margin:0; padding:0 0 60px 0;
+  }
+  header{
+    background:var(--main); color:#fff; padding:16px 20px;
+  }
+  header h1{margin:0; font-size:20px;}
+  header p{margin:4px 0 0; font-size:12px; opacity:.85;}
+  .wrap{max-width:1100px; margin:0 auto; padding:16px;}
+  .card{
+    background:#fff; border:1px solid var(--line); border-radius:8px;
+    padding:16px; margin-bottom:16px; box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .card h2{
+    font-size:15px; margin:0 0 12px; color:var(--main); border-left:4px solid var(--main2);
+    padding-left:8px;
+  }
+  .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;}
+  label{font-size:12px; color:#555; display:block; margin-bottom:2px;}
+  input[type=text], input[type=number], input[type=date], select{
+    width:100%; padding:6px 8px; font-size:13px; border:1px solid #c7cdd1; border-radius:4px;
+    background:#fff;
+  }
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th,td{border:1px solid var(--line); padding:6px 6px; text-align:center; vertical-align:middle;}
+  th{background:var(--sub); color:#1a5276; font-weight:600;}
+  td.txt{text-align:left;}
+  tfoot td{font-weight:700; background:#f8f9fa;}
+  .refTable{margin-top:6px; font-size:11.5px;}
+  .note{font-size:11px; color:#777; margin-top:6px; line-height:1.5;}
+  .warnCell{color:var(--warn); font-size:11px;}
+  .okCell{color:var(--ok); font-size:11px;}
+  .rowInput{min-width:60px;}
+  button{
+    cursor:pointer; border:none; border-radius:5px; font-size:13px; padding:8px 14px;
+  }
+  .btn-add{background:var(--main2); color:#fff;}
+  .btn-del{background:#e74c3c; color:#fff; padding:4px 10px; font-size:11px;}
+  .btn-main{background:var(--main); color:#fff;}
+  .btn-outline{background:#fff; border:1px solid var(--main); color:var(--main);}
+  .actions{
+    position:sticky; bottom:0; background:#fff; border-top:1px solid var(--line);
+    padding:12px 16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    max-width:1100px; margin:0 auto;
+  }
+  .actions .saveInfo{font-size:11px; color:var(--ok); margin-left:auto;}
+  .grandTotal{font-size:20px; font-weight:800; color:var(--main);}
+  .subTotalRow td{background:#f8f9fa; font-weight:700;}
+  details summary{cursor:pointer; font-size:12.5px; color:var(--main2); font-weight:600; margin-bottom:8px;}
+  .toast{
+    position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
+    background:#2e2e2e; color:#fff; padding:10px 20px; border-radius:20px;
+    font-size:13px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:999;
+  }
+  .toast.show{opacity:1;}
+  .printOnly{display:none;}
+  @media print{
+    .no-print{display:none !important;}
+    .printOnly{display:block !important;}
+    body{padding:0; background:#fff;}
+    .card{box-shadow:none; border:1px solid #999;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>配線工事費 積算アプリ</h1>
+  <p>鋳造工場 砂処理設備向け ／ 動力配線(600V CV 3芯)・制御配線(CVV-S) 材料費＋労務費 積算</p>
+</header>
+
+<div class="wrap">
+
+  <!-- 案件情報 -->
+  <div class="card no-print">
+    <h2>案件情報</h2>
+    <div class="grid2">
+      <div><label>件名</label><input type="text" id="projName" placeholder="例）砂処理設備 配線更新工事"></div>
+      <div><label>お客様名</label><input type="text" id="projClient" placeholder="例）〇〇鋳造株式会社"></div>
+      <div><label>作成日</label><input type="date" id="projDate"></div>
+      <div><label>作成者</label><input type="text" id="projAuthor" placeholder="担当者名"></div>
+    </div>
+  </div>
+
+  <!-- 動力配線 単価表参照 -->
+  <div class="card no-print">
+    <details>
+      <summary>単価表を見る：動力配線（600V CV 3芯ケーブル）</summary>
+      <table class="refTable" id="powerRefTable"></table>
+      <p class="note">出典：橋本興産cableMART 通販単価（税込）2026年6-7月時点。許容電流は気中布設・周囲温度30℃の参考値。実際の許容電流は始動電流・周囲温度・配線こう長による電圧降下・敷設条件（配管内／気中／多条布設）で変動するため、発注前に必ず最新単価と電圧降下計算・低減率を確認してください。</p>
+    </details>
+  </div>
+
+  <!-- 動力配線 積算 -->
+  <div class="card no-print">
+    <h2>① 動力配線（600V CV 3芯）積算</h2>
+    <table>
+      <thead>
+        <tr>
+          <th class="no-print" style="width:20px;"></th>
+          <th style="min-width:120px;">用途・回路名</th>
+          <th style="width:110px;">モーター容量</th>
+          <th style="width:70px;">1ランクUP</th>
+          <th style="width:90px;">ケーブルサイズ(SQ)</th>
+          <th style="width:75px;">亘長(m)</th>
+          <th style="width:60px;">条数</th>
+          <th style="width:90px;">単価(円/m)</th>
+          <th style="width:100px;">小計(円)</th>
+          <th style="min-width:120px;">確認事項</th>
+        </tr>
+      </thead>
+      <tbody id="powerBody"></tbody>
+      <tfoot>
+        <tr class="subTotalRow">
+          <td class="no-print"></td>
+          <td colspan="7" class="txt">動力配線 小計（予備率込み）</td>
+          <td id="powerSubtotal">¥0</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="no-print" style="margin-top:10px;">
+      <button class="btn-add" onclick="addPowerRow()">＋ 行を追加</button>
+    </div>
+  </div>
+
+  <!-- 制御配線 単価表参照 -->
+  <div class="card no-print">
+    <details>
+      <summary>単価表を見る：制御配線（CVV-S）</summary>
+      <table class="refTable" id="controlRefTable"></table>
+      <p class="note">出典：橋本興産cableMART 通販単価（税込）2026年6-7月時点。シールドなし(CVV)の場合は概ね2〜3割程度安価（本アプリでは25%引きで概算）。ノイズ環境（PLC盤〜フィールド間等）ではシールド付(CVV-S)を推奨。</p>
+    </details>
+  </div>
+
+  <!-- 制御配線 積算 -->
+  <div class="card no-print">
+    <h2>② 制御配線（CVV-S／CVV）積算</h2>
+    <table>
+      <thead>
+        <tr>
+          <th class="no-print" style="width:20px;"></th>
+          <th style="min-width:120px;">用途・回路名</th>
+          <th style="width:70px;">芯数</th>
+          <th style="width:80px;">サイズ(SQ)</th>
+          <th style="width:80px;">シールド</th>
+          <th style="width:75px;">亘長(m)</th>
+          <th style="width:60px;">本数</th>
+          <th style="width:90px;">単価(円/m)</th>
+          <th style="width:100px;">小計(円)</th>
+          <th style="min-width:100px;">備考</th>
+        </tr>
+      </thead>
+      <tbody id="controlBody"></tbody>
+      <tfoot>
+        <tr class="subTotalRow">
+          <td class="no-print"></td>
+          <td colspan="7" class="txt">制御配線 小計（予備率込み）</td>
+          <td id="controlSubtotal">¥0</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="no-print" style="margin-top:10px;">
+      <button class="btn-add" onclick="addControlRow()">＋ 行を追加</button>
+    </div>
+  </div>
+
+  <!-- 労務費 単価表参照 -->
+  <div class="card no-print">
+    <details>
+      <summary>歩掛り目安を見る：電気配線工事 労務費</summary>
+      <table class="refTable" id="laborRefTable"></table>
+      <p class="note">歩掛り・日当ともに一般的な目安値です（公表統計や案件条件により変動）。実際の労務単価・歩掛りは自社の実績値や最新の設計労務単価をご確認のうえ調整してください。</p>
+    </details>
+  </div>
+
+  <!-- 労務費 積算 -->
+  <div class="card no-print">
+    <h2>③ 電気配線工事 労務費</h2>
+    <div class="grid2" style="margin-bottom:12px;">
+      <div>
+        <label>労務単価（円/人工）</label>
+        <input type="number" id="dailyRate" value="24000" min="0" step="500" oninput="recalcAll()">
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th class="no-print" style="width:20px;"></th>
+          <th style="min-width:120px;">用途・作業内容</th>
+          <th style="width:80px;">区分</th>
+          <th style="width:90px;">計算方式</th>
+          <th style="width:100px;">太さ・芯数</th>
+          <th style="width:75px;">亘長(m)</th>
+          <th style="width:60px;">数量</th>
+          <th style="width:80px;">人工数</th>
+          <th style="width:100px;">小計(円)</th>
+        </tr>
+      </thead>
+      <tbody id="laborBody"></tbody>
+      <tfoot>
+        <tr class="subTotalRow">
+          <td class="no-print"></td>
+          <td colspan="7" class="txt">労務費 小計</td>
+          <td id="laborSubtotal">¥0</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="no-print" style="margin-top:10px;">
+      <button class="btn-add" onclick="addLaborRow()">＋ 行を追加</button>
+    </div>
+  </div>
+
+  <!-- 集計 -->
+  <div class="card no-print">
+    <h2>④ 集計</h2>
+    <div class="grid2 no-print">
+      <div>
+        <label>予備率（切断ロス・敷設余長）%</label>
+        <input type="number" id="spareRate" value="5" min="0" step="1" oninput="recalcAll()">
+      </div>
+      <div>
+        <label>付属材料率（端子・結束・銘板等）%</label>
+        <input type="number" id="miscRate" value="0" min="0" step="1" oninput="recalcAll()">
+      </div>
+    </div>
+    <table style="margin-top:14px;">
+      <tbody>
+        <tr><td class="txt">動力配線 材料費 小計</td><td id="sumPower" style="width:160px;">¥0</td></tr>
+        <tr><td class="txt">制御配線 材料費 小計</td><td id="sumControl">¥0</td></tr>
+        <tr><td class="txt">付属材料費（率換算）</td><td id="sumMisc">¥0</td></tr>
+        <tr><td class="txt">労務費 小計</td><td id="sumLabor">¥0</td></tr>
+        <tr style="background:#eaf2f8;"><td class="txt grandTotal">合計金額（税込）</td><td class="grandTotal" id="sumGrand">¥0</td></tr>
+      </tbody>
+    </table>
+    <p class="note">単価表の単価は税込表示（出典：橋本興産cableMART）。予備率は亘長に対して加算し、実際の発注数量に反映しています。労務単価・歩掛りは一般的な目安値のため、材料単価とあわせ発注・契約前に最新の実績値をご確認ください。</p>
+  </div>
+
+</div>
+
+<!-- 印刷専用ビュー -->
+<div id="printArea" class="printOnly"></div>
+
+<div class="toast" id="toast"></div>
+
+<div class="actions no-print">
+  <button class="btn-main" onclick="saveData()">💾 保存</button>
+  <button class="btn-outline" onclick="loadData()">📂 読込</button>
+  <button class="btn-outline" onclick="doPrint()">🖨 印刷</button>
+  <button class="btn-outline" onclick="clearAll()">🗑 クリア</button>
+  <span class="saveInfo" id="saveInfo"></span>
+</div>
+
+<script>
+/* ===== マスタデータ ===== */
+const POWER_CABLE_TABLE = [
+  {sq:2,    price:347,   amp:22,  note:'小型ポンプ・小型ブロワ等'},
+  {sq:3.5,  price:534,   amp:32,  note:'汎用モーター(小)'},
+  {sq:5.5,  price:792,   amp:41,  note:'コンベア駆動用等'},
+  {sq:8,    price:1073,  amp:51,  note:'シェイクアウト等中型駆動'},
+  {sq:14,   price:1815,  amp:71,  note:'冷却ドラム・搬送系'},
+  {sq:22,   price:2750,  amp:95,  note:'30kW(98A)は許容電流に対し余裕僅少のため要個別検討'},
+  {sq:38,   price:4741,  amp:130, note:'大型ブロワ・集塵機等'},
+  {sq:60,   price:7469,  amp:170, note:'55kW(176A)は許容電流超過のため上位サイズ検討'},
+  {sq:100,  price:12254, amp:235, note:'大型集塵送風機等'}
+];
+const MOTOR_TABLE = [
+  {kw:0.75, amp:3.5,  recSq:2},
+  {kw:2.2,  amp:9,    recSq:2},
+  {kw:3.7,  amp:14.5, recSq:2},
+  {kw:5.5,  amp:19.5, recSq:2},
+  {kw:7.5,  amp:26,   recSq:3.5},
+  {kw:11,   amp:38,   recSq:5.5},
+  {kw:15,   amp:51,   recSq:8},
+  {kw:18.5, amp:62,   recSq:14},
+  {kw:22,   amp:74,   recSq:22},
+  {kw:30,   amp:98,   recSq:38, warn:'22SQでは許容電流(95A)に対し余裕僅少のため38SQ(130A)を推奨'},
+  {kw:37,   amp:118,  recSq:38},
+  {kw:45,   amp:145,  recSq:60},
+  {kw:55,   amp:176,  recSq:100, warn:'60SQでは許容電流(170A)を超過するため100SQ(235A)を推奨'}
+];
+const CONTROL_CABLE_TABLE = [
+  {cores:10, sq:1.25, price:864,  note:'一般信号・接点用'},
+  {cores:10, sq:2,    price:1287, note:'太めの信号線・電流大きめの回路用'},
+  {cores:10, sq:3.5,  price:1969, note:'在庫切れ時あり／要納期確認'},
+  {cores:20, sq:1.25, price:1573, note:'多点I/O・端子台一括配線向け'},
+  {cores:20, sq:2,    price:2277, note:'多点I/O・電流大きめの回路用'}
+];
+const CVV_DISCOUNT = 0.75; // シールドなし(CVV)概算（2〜3割引の中間値）
+
+// 労務費 歩掛り目安（一般的な目安値／要実績値調整）
+const POWER_LABOR_TABLE = [
+  {key:'small',  label:'小(2〜8SQ)',   rate:0.12, term:0.3},
+  {key:'medium', label:'中(14〜22SQ)', rate:0.18, term:0.3},
+  {key:'large',  label:'大(38〜60SQ)', rate:0.28, term:0.4},
+  {key:'xlarge', label:'特大(100SQ)',  rate:0.40, term:0.5}
+];
+const CONTROL_LABOR_TABLE = [
+  {key:'10', label:'10芯', rate:0.08, termPerCore:0.02},
+  {key:'20', label:'20芯', rate:0.10, termPerCore:0.02}
+];
+const DEFAULT_DAILY_RATE = 24000; // 円/人工（一般的な目安。地域・年度で要確認）
+
+const STORAGE_KEY = 'wiringMaterialEstimateApp_v1';
+
+let powerRows = [];
+let controlRows = [];
+let laborRows = [];
+let rowSeq = 1;
+
+/* ===== 初期化 ===== */
+function yen(n){ return '¥' + Math.round(n).toLocaleString('ja-JP'); }
+
+function findPowerCable(sq){ return POWER_CABLE_TABLE.find(r => r.sq === sq); }
+function findControlCable(cores, sq){ return CONTROL_CABLE_TABLE.find(r => r.cores===cores && r.sq===sq); }
+
+// モーターkWと「1ランクアップ」指定から、実際に使用するケーブルサイズ(SQ)を求める
+function computeSqForMotor(kw, rankUp){
+  const m = MOTOR_TABLE.find(mm => String(mm.kw) === String(kw));
+  if(!m) return null;
+  let idx = POWER_CABLE_TABLE.findIndex(c => c.sq === m.recSq);
+  if(idx < 0) return m.recSq;
+  if(rankUp) idx = Math.min(idx + 1, POWER_CABLE_TABLE.length - 1);
+  return POWER_CABLE_TABLE[idx].sq;
+}
+
+function buildRefTables(){
+  let h = '<tr><th>サイズ(SQ)</th><th>単価(円/m)</th><th>許容電流(A)</th><th>対応モーターkW</th><th>備考</th></tr>';
+  POWER_CABLE_TABLE.forEach(r=>{
+    const kws = MOTOR_TABLE.filter(m=>m.recSq===r.sq).map(m=>m.kw+'kW').join('・') || '-';
+    h += `<tr><td>${r.sq}</td><td>${r.price.toLocaleString()}</td><td>${r.amp}</td><td>${kws}</td><td class="txt">${r.note}</td></tr>`;
+  });
+  document.getElementById('powerRefTable').innerHTML = h;
+
+  let h2 = '<tr><th>芯数</th><th>サイズ(SQ)</th><th>単価(円/m)</th><th>備考</th></tr>';
+  CONTROL_CABLE_TABLE.forEach(r=>{
+    h2 += `<tr><td>${r.cores}</td><td>${r.sq}</td><td>${r.price.toLocaleString()}</td><td class="txt">${r.note}</td></tr>`;
+  });
+  document.getElementById('controlRefTable').innerHTML = h2;
+
+  let h3 = '<tr><th>区分</th><th>太さ・芯数</th><th>敷設歩掛り(人工/10m)</th><th>結線人工(目安)</th></tr>';
+  POWER_LABOR_TABLE.forEach(t=>{
+    h3 += `<tr><td>動力配線</td><td>${t.label}</td><td>${t.rate}</td><td>${t.term}人工/回路</td></tr>`;
+  });
+  CONTROL_LABOR_TABLE.forEach(t=>{
+    h3 += `<tr><td>制御配線</td><td>${t.label}</td><td>${t.rate}</td><td>${t.termPerCore}人工/心</td></tr>`;
+  });
+  document.getElementById('laborRefTable').innerHTML = h3;
+}
+
+/* ===== 動力配線 行 ===== */
+function addPowerRow(data){
+  const id = 'p' + (rowSeq++);
+  const row = Object.assign({
+    id, name:'', motorKw:'manual', sq:2, length:0, count:1, rankUp:false
+  }, data||{});
+  if(row.motorKw !== 'manual' && !(data && 'sq' in data)){
+    const sq = computeSqForMotor(row.motorKw, row.rankUp);
+    if(sq) row.sq = sq;
+  }
+  powerRows.push(row);
+  renderPowerRows();
+}
+function removePowerRow(id){
+  powerRows = powerRows.filter(r=>r.id!==id);
+  renderPowerRows();
+}
+function renderPowerRows(){
+  const tbody = document.getElementById('powerBody');
+  tbody.innerHTML = '';
+  powerRows.forEach(row=>{
+    const tr = document.createElement('tr');
+    const motorOptions = ['<option value="manual">手動選択</option>']
+      .concat(MOTOR_TABLE.map(m=>`<option value="${m.kw}">${m.kw}kW</option>`)).join('');
+    const sqOptions = POWER_CABLE_TABLE.map(c=>`<option value="${c.sq}">${c.sq}SQ</option>`).join('');
+    tr.innerHTML = `
+      <td class="no-print"><button class="btn-del" onclick="removePowerRow('${row.id}')">×</button></td>
+      <td class="txt"><input type="text" class="rowInput" value="${row.name}" oninput="updatePowerField('${row.id}','name',this.value)"></td>
+      <td><select onchange="updatePowerField('${row.id}','motorKw',this.value)">${motorOptions}</select></td>
+      <td><input type="checkbox" ${row.rankUp?'checked':''} ${row.motorKw==='manual'?'disabled':''} onchange="updatePowerField('${row.id}','rankUp',this.checked)"></td>
+      <td><select onchange="updatePowerField('${row.id}','sq',this.value)">${sqOptions}</select></td>
+      <td><input type="number" class="rowInput" min="0" step="0.1" value="${row.length}" oninput="updatePowerField('${row.id}','length',this.value)"></td>
+      <td><input type="number" class="rowInput" min="1" step="1" value="${row.count}" oninput="updatePowerField('${row.id}','count',this.value)"></td>
+      <td class="unitPriceCell"></td>
+      <td class="subtotalCell"></td>
+      <td class="txt warnCell"></td>
+    `;
+    tbody.appendChild(tr);
+    // set select values
+    tr.querySelector('select[onchange*="motorKw"]').value = row.motorKw;
+    tr.querySelector('select[onchange*="sq"]').value = row.sq;
+  });
+  recalcAll();
+}
+function updatePowerField(id, field, value){
+  const row = powerRows.find(r=>r.id===id);
+  if(!row) return;
+  if(field==='motorKw'){
+    row.motorKw = value;
+    if(value !== 'manual'){
+      const sq = computeSqForMotor(value, row.rankUp);
+      if(sq) row.sq = sq;
+    }
+    renderPowerRows();
+    return;
+  }
+  if(field==='rankUp'){
+    row.rankUp = value;
+    if(row.motorKw !== 'manual'){
+      const sq = computeSqForMotor(row.motorKw, row.rankUp);
+      if(sq) row.sq = sq;
+    }
+    renderPowerRows();
+    return;
+  }
+  if(field==='name') row.name = value;
+  if(field==='sq') row.sq = parseFloat(value);
+  if(field==='length') row.length = parseFloat(value)||0;
+  if(field==='count') row.count = parseInt(value)||0;
+  recalcAll();
+}
+
+/* ===== 制御配線 行 ===== */
+function addControlRow(data){
+  const id = 'c' + (rowSeq++);
+  const row = Object.assign({
+    id, name:'', cores:10, sq:1.25, shield:true, length:0, count:1
+  }, data||{});
+  controlRows.push(row);
+  renderControlRows();
+}
+function removeControlRow(id){
+  controlRows = controlRows.filter(r=>r.id!==id);
+  renderControlRows();
+}
+function controlSqOptionsFor(cores){
+  return CONTROL_CABLE_TABLE.filter(c=>c.cores===cores).map(c=>`<option value="${c.sq}">${c.sq}SQ</option>`).join('');
+}
+function renderControlRows(){
+  const tbody = document.getElementById('controlBody');
+  tbody.innerHTML = '';
+  controlRows.forEach(row=>{
+    // sqが芯数に存在しない場合は先頭に合わせる
+    const avail = CONTROL_CABLE_TABLE.filter(c=>c.cores===row.cores);
+    if(!avail.find(c=>c.sq===row.sq)) row.sq = avail[0].sq;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="no-print"><button class="btn-del" onclick="removeControlRow('${row.id}')">×</button></td>
+      <td class="txt"><input type="text" class="rowInput" value="${row.name}" oninput="updateControlField('${row.id}','name',this.value)"></td>
+      <td>
+        <select onchange="updateControlField('${row.id}','cores',this.value)">
+          <option value="10">10芯</option>
+          <option value="20">20芯</option>
+        </select>
+      </td>
+      <td><select onchange="updateControlField('${row.id}','sq',this.value)">${controlSqOptionsFor(row.cores)}</select></td>
+      <td>
+        <select onchange="updateControlField('${row.id}','shield',this.value)">
+          <option value="true">有(CVV-S)</option>
+          <option value="false">無(CVV)</option>
+        </select>
+      </td>
+      <td><input type="number" class="rowInput" min="0" step="0.1" value="${row.length}" oninput="updateControlField('${row.id}','length',this.value)"></td>
+      <td><input type="number" class="rowInput" min="1" step="1" value="${row.count}" oninput="updateControlField('${row.id}','count',this.value)"></td>
+      <td class="unitPriceCell"></td>
+      <td class="subtotalCell"></td>
+      <td class="txt noteCell"></td>
+    `;
+    tbody.appendChild(tr);
+    tr.querySelector('select[onchange*="cores"]').value = row.cores;
+    tr.querySelector('select[onchange*="sq"]').value = row.sq;
+    tr.querySelector('select[onchange*="shield"]').value = String(row.shield);
+  });
+  recalcAll();
+}
+function updateControlField(id, field, value){
+  const row = controlRows.find(r=>r.id===id);
+  if(!row) return;
+  if(field==='cores'){ row.cores = parseInt(value); renderControlRows(); return; }
+  if(field==='name') row.name = value;
+  if(field==='sq') row.sq = parseFloat(value);
+  if(field==='shield') row.shield = (value === 'true');
+  if(field==='length') row.length = parseFloat(value)||0;
+  if(field==='count') row.count = parseInt(value)||0;
+  recalcAll();
+}
+
+/* ===== 労務費 行 ===== */
+function laborTableFor(category){ return category==='power' ? POWER_LABOR_TABLE : CONTROL_LABOR_TABLE; }
+function laborSizeOptionsFor(category){
+  return laborTableFor(category).map(t=>`<option value="${t.key}">${t.label}</option>`).join('');
+}
+function computeManDays(row){
+  if(row.mode === 'manual') return row.manDays || 0;
+  const table = laborTableFor(row.category);
+  const spec = table.find(t=>t.key===row.sizeClass) || table[0];
+  const layingDays = (row.length/10) * spec.rate;
+  const termDays = row.category==='power' ? spec.term : (parseInt(row.sizeClass)||0) * spec.termPerCore;
+  return (layingDays + termDays) * (row.qty || 1);
+}
+function addLaborRow(data){
+  const id = 'l' + (rowSeq++);
+  const row = Object.assign({
+    id, name:'', category:'power', mode:'auto', sizeClass:'small', length:0, qty:1, manDays:0
+  }, data||{});
+  laborRows.push(row);
+  renderLaborRows();
+}
+function removeLaborRow(id){
+  laborRows = laborRows.filter(r=>r.id!==id);
+  renderLaborRows();
+}
+function renderLaborRows(){
+  const tbody = document.getElementById('laborBody');
+  tbody.innerHTML = '';
+  laborRows.forEach(row=>{
+    // 区分に無い太さ区分が残っていたら先頭に合わせる
+    const table = laborTableFor(row.category);
+    if(!table.find(t=>t.key===row.sizeClass)) row.sizeClass = table[0].key;
+    const tr = document.createElement('tr');
+    const manDaysCell = row.mode === 'manual'
+      ? `<input type="number" class="rowInput" min="0" step="0.1" value="${row.manDays}" oninput="updateLaborField('${row.id}','manDays',this.value)">`
+      : `<span class="manDaysDisplay"></span>`;
+    tr.innerHTML = `
+      <td class="no-print"><button class="btn-del" onclick="removeLaborRow('${row.id}')">×</button></td>
+      <td class="txt"><input type="text" class="rowInput" value="${row.name}" oninput="updateLaborField('${row.id}','name',this.value)"></td>
+      <td>
+        <select onchange="updateLaborField('${row.id}','category',this.value)">
+          <option value="power">動力</option>
+          <option value="control">制御</option>
+        </select>
+      </td>
+      <td>
+        <select onchange="updateLaborField('${row.id}','mode',this.value)">
+          <option value="auto">自動(歩掛り)</option>
+          <option value="manual">手動(人工数)</option>
+        </select>
+      </td>
+      <td><select onchange="updateLaborField('${row.id}','sizeClass',this.value)" ${row.mode==='manual'?'disabled':''}>${laborSizeOptionsFor(row.category)}</select></td>
+      <td><input type="number" class="rowInput" min="0" step="0.1" value="${row.length}" oninput="updateLaborField('${row.id}','length',this.value)" ${row.mode==='manual'?'disabled':''}></td>
+      <td><input type="number" class="rowInput" min="1" step="1" value="${row.qty}" oninput="updateLaborField('${row.id}','qty',this.value)" ${row.mode==='manual'?'disabled':''}></td>
+      <td>${manDaysCell}</td>
+      <td class="subtotalCell"></td>
+    `;
+    tbody.appendChild(tr);
+    tr.querySelector('select[onchange*="category"]').value = row.category;
+    tr.querySelector('select[onchange*="mode"]').value = row.mode;
+    tr.querySelector('select[onchange*="sizeClass"]').value = row.sizeClass;
+  });
+  recalcAll();
+}
+function updateLaborField(id, field, value){
+  const row = laborRows.find(r=>r.id===id);
+  if(!row) return;
+  if(field==='category'){ row.category = value; renderLaborRows(); return; }
+  if(field==='mode'){ row.mode = value; renderLaborRows(); return; }
+  if(field==='name') row.name = value;
+  if(field==='sizeClass') row.sizeClass = value;
+  if(field==='length') row.length = parseFloat(value)||0;
+  if(field==='qty') row.qty = parseInt(value)||0;
+  if(field==='manDays') row.manDays = parseFloat(value)||0;
+  recalcAll();
+}
+
+/* ===== 再計算 ===== */
+function recalcAll(){
+  const spareRate = parseFloat(document.getElementById('spareRate').value)||0;
+  const miscRate = parseFloat(document.getElementById('miscRate').value)||0;
+
+  let powerTotal = 0;
+  const powerTr = document.querySelectorAll('#powerBody tr');
+  powerRows.forEach((row, i)=>{
+    const cable = findPowerCable(row.sq);
+    const effLen = row.length * (1 + spareRate/100);
+    const subtotal = cable ? cable.price * effLen * row.count : 0;
+    powerTotal += subtotal;
+    const tr = powerTr[i];
+    if(tr){
+      tr.querySelector('.unitPriceCell').textContent = cable ? cable.price.toLocaleString() : '-';
+      tr.querySelector('.subtotalCell').textContent = yen(subtotal);
+      let warn = '';
+      if(row.motorKw !== 'manual'){
+        const m = MOTOR_TABLE.find(mm=>String(mm.kw)===String(row.motorKw));
+        if(m){
+          const recIdx = POWER_CABLE_TABLE.findIndex(c=>c.sq===m.recSq);
+          if(row.rankUp){
+            warn = (recIdx === POWER_CABLE_TABLE.length-1)
+              ? '既に最大サイズのため1ランクアップ不可'
+              : `1ランクアップ適用中（標準推奨:${POWER_CABLE_TABLE[recIdx].sq}SQ→使用:${row.sq}SQ）`;
+          } else if(m.warn){
+            warn = m.warn;
+          }
+        }
+      }
+      tr.querySelector('.warnCell').textContent = warn;
+    }
+  });
+  document.getElementById('powerSubtotal').textContent = yen(powerTotal);
+  document.getElementById('sumPower').textContent = yen(powerTotal);
+
+  let controlTotal = 0;
+  const controlTr = document.querySelectorAll('#controlBody tr');
+  controlRows.forEach((row, i)=>{
+    const cable = findControlCable(row.cores, row.sq);
+    const unitPrice = cable ? (row.shield ? cable.price : cable.price*CVV_DISCOUNT) : 0;
+    const effLen = row.length * (1 + spareRate/100);
+    const subtotal = unitPrice * effLen * row.count;
+    controlTotal += subtotal;
+    const tr = controlTr[i];
+    if(tr){
+      tr.querySelector('.unitPriceCell').textContent = Math.round(unitPrice).toLocaleString();
+      tr.querySelector('.subtotalCell').textContent = yen(subtotal);
+      tr.querySelector('.noteCell').textContent = cable ? cable.note : '';
+    }
+  });
+  document.getElementById('controlSubtotal').textContent = yen(controlTotal);
+  document.getElementById('sumControl').textContent = yen(controlTotal);
+
+  const dailyRate = parseFloat(document.getElementById('dailyRate').value)||0;
+  let laborTotal = 0;
+  const laborTr = document.querySelectorAll('#laborBody tr');
+  laborRows.forEach((row, i)=>{
+    const manDays = computeManDays(row);
+    const subtotal = manDays * dailyRate;
+    laborTotal += subtotal;
+    const tr = laborTr[i];
+    if(tr){
+      const display = tr.querySelector('.manDaysDisplay');
+      if(display) display.textContent = manDays.toFixed(2);
+      tr.querySelector('.subtotalCell').textContent = yen(subtotal);
+    }
+  });
+  document.getElementById('laborSubtotal').textContent = yen(laborTotal);
+  document.getElementById('sumLabor').textContent = yen(laborTotal);
+
+  const miscCost = (powerTotal + controlTotal) * (miscRate/100);
+  document.getElementById('sumMisc').textContent = yen(miscCost);
+
+  const grand = powerTotal + controlTotal + miscCost + laborTotal;
+  document.getElementById('sumGrand').textContent = yen(grand);
+}
+
+/* ===== 保存・読込 ===== */
+function collectState(){
+  return {
+    proj:{
+      name: document.getElementById('projName').value,
+      client: document.getElementById('projClient').value,
+      date: document.getElementById('projDate').value,
+      author: document.getElementById('projAuthor').value
+    },
+    spareRate: document.getElementById('spareRate').value,
+    miscRate: document.getElementById('miscRate').value,
+    dailyRate: document.getElementById('dailyRate').value,
+    powerRows, controlRows, laborRows
+  };
+}
+function applyState(state){
+  if(!state) return;
+  document.getElementById('projName').value = state.proj?.name||'';
+  document.getElementById('projClient').value = state.proj?.client||'';
+  document.getElementById('projDate').value = state.proj?.date||'';
+  document.getElementById('projAuthor').value = state.proj?.author||'';
+  document.getElementById('spareRate').value = state.spareRate ?? 5;
+  document.getElementById('miscRate').value = state.miscRate ?? 0;
+  document.getElementById('dailyRate').value = state.dailyRate ?? DEFAULT_DAILY_RATE;
+  powerRows = state.powerRows || [];
+  controlRows = state.controlRows || [];
+  laborRows = state.laborRows || [];
+  renderPowerRows();
+  renderControlRows();
+  renderLaborRows();
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+function saveData(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState()));
+  const now = new Date();
+  const stamp = now.toLocaleString('ja-JP');
+  localStorage.setItem(STORAGE_KEY+'_ts', stamp);
+  document.getElementById('saveInfo').textContent = '最終保存：' + stamp;
+  showToast('✅ 保存しました');
+}
+function loadData(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw){ showToast('保存データがありません'); return; }
+  applyState(JSON.parse(raw));
+  const stamp = localStorage.getItem(STORAGE_KEY+'_ts');
+  if(stamp) document.getElementById('saveInfo').textContent = '最終保存：' + stamp;
+  showToast('📂 読み込みました');
+}
+function clearAll(){
+  if(!confirm('入力内容をすべてクリアします。よろしいですか？')) return;
+  powerRows = []; controlRows = []; laborRows = [];
+  document.getElementById('projName').value='';
+  document.getElementById('projClient').value='';
+  document.getElementById('projAuthor').value='';
+  document.getElementById('spareRate').value=5;
+  document.getElementById('miscRate').value=0;
+  document.getElementById('dailyRate').value=DEFAULT_DAILY_RATE;
+  renderPowerRows();
+  renderControlRows();
+  renderLaborRows();
+  showToast('クリアしました');
+}
+
+/* ===== 印刷 ===== */
+function doPrint(){
+  const spareRate = document.getElementById('spareRate').value;
+  const miscRate = document.getElementById('miscRate').value;
+  const dailyRate = parseFloat(document.getElementById('dailyRate').value)||0;
+  let html = `
+    <div class="card">
+      <h2 style="font-size:16px;">配線工事費 積算書</h2>
+      <p style="font-size:12px;">件名：${esc(document.getElementById('projName').value)}　／　お客様：${esc(document.getElementById('projClient').value)}<br>
+      作成日：${esc(document.getElementById('projDate').value)}　／　作成者：${esc(document.getElementById('projAuthor').value)}</p>
+    </div>
+    <div class="card">
+      <h2 style="font-size:14px;">① 動力配線（600V CV 3芯）</h2>
+      <table><tr><th>用途・回路名</th><th>モーター容量</th><th>サイズ(SQ)</th><th>亘長(m)</th><th>条数</th><th>単価(円/m)</th><th>小計(円)</th></tr>`;
+  let powerTotal=0;
+  powerRows.forEach(row=>{
+    const cable = findPowerCable(row.sq);
+    const effLen = row.length*(1+spareRate/100);
+    const sub = cable? cable.price*effLen*row.count:0;
+    powerTotal+=sub;
+    html += `<tr><td class="txt">${esc(row.name)}</td><td>${row.motorKw==='manual'?'手動':row.motorKw+'kW'}</td><td>${row.sq}SQ${row.rankUp?'（1ランクUP）':''}</td><td>${row.length}</td><td>${row.count}</td><td>${cable?cable.price.toLocaleString():'-'}</td><td>${yen(sub)}</td></tr>`;
+  });
+  html += `<tr class="subTotalRow"><td colspan="6" class="txt">小計</td><td>${yen(powerTotal)}</td></tr></table></div>`;
+
+  html += `<div class="card"><h2 style="font-size:14px;">② 制御配線（CVV-S／CVV）</h2>
+    <table><tr><th>用途・回路名</th><th>芯数</th><th>サイズ(SQ)</th><th>シールド</th><th>亘長(m)</th><th>本数</th><th>単価(円/m)</th><th>小計(円)</th></tr>`;
+  let controlTotal=0;
+  controlRows.forEach(row=>{
+    const cable = findControlCable(row.cores,row.sq);
+    const unitPrice = cable? (row.shield?cable.price:cable.price*CVV_DISCOUNT):0;
+    const effLen = row.length*(1+spareRate/100);
+    const sub = unitPrice*effLen*row.count;
+    controlTotal+=sub;
+    html += `<tr><td class="txt">${esc(row.name)}</td><td>${row.cores}芯</td><td>${row.sq}SQ</td><td>${row.shield?'有':'無'}</td><td>${row.length}</td><td>${row.count}</td><td>${Math.round(unitPrice).toLocaleString()}</td><td>${yen(sub)}</td></tr>`;
+  });
+  html += `<tr class="subTotalRow"><td colspan="7" class="txt">小計</td><td>${yen(controlTotal)}</td></tr></table></div>`;
+
+  html += `<div class="card"><h2 style="font-size:14px;">③ 電気配線工事 労務費（労務単価 ${Number(dailyRate).toLocaleString()}円/人工）</h2>
+    <table><tr><th>用途・作業内容</th><th>区分</th><th>方式</th><th>太さ・芯数</th><th>亘長(m)</th><th>数量</th><th>人工数</th><th>小計(円)</th></tr>`;
+  let laborTotal=0;
+  const CATEGORY_LABEL = {power:'動力', control:'制御'};
+  laborRows.forEach(row=>{
+    const manDays = computeManDays(row);
+    const sub = manDays * dailyRate;
+    laborTotal += sub;
+    const table = laborTableFor(row.category);
+    const spec = table.find(t=>t.key===row.sizeClass) || table[0];
+    html += `<tr><td class="txt">${esc(row.name)}</td><td>${CATEGORY_LABEL[row.category]}</td><td>${row.mode==='manual'?'手動':'自動'}</td><td>${row.mode==='manual'?'-':spec.label}</td><td>${row.mode==='manual'?'-':row.length}</td><td>${row.mode==='manual'?'-':row.qty}</td><td>${manDays.toFixed(2)}</td><td>${yen(sub)}</td></tr>`;
+  });
+  html += `<tr class="subTotalRow"><td colspan="7" class="txt">小計</td><td>${yen(laborTotal)}</td></tr></table></div>`;
+
+  const miscCost = (powerTotal+controlTotal)*(miscRate/100);
+  const grand = powerTotal+controlTotal+miscCost+laborTotal;
+  html += `<div class="card">
+    <h2 style="font-size:14px;">④ 集計</h2>
+    <table>
+      <tr><td class="txt">予備率</td><td>${spareRate}%</td></tr>
+      <tr><td class="txt">動力配線 材料費 小計</td><td>${yen(powerTotal)}</td></tr>
+      <tr><td class="txt">制御配線 材料費 小計</td><td>${yen(controlTotal)}</td></tr>
+      <tr><td class="txt">付属材料費（${miscRate}%）</td><td>${yen(miscCost)}</td></tr>
+      <tr><td class="txt">労務費 小計</td><td>${yen(laborTotal)}</td></tr>
+      <tr style="background:#eaf2f8;"><td class="txt grandTotal">合計金額（税込）</td><td class="grandTotal">${yen(grand)}</td></tr>
+    </table>
+    <p class="note">材料単価出典：橋本興産cableMART（2026年6-7月時点、税込）。労務単価・歩掛りは一般的な目安値です。本見積は概算であり、発注・契約前に最新の材料単価・労務単価をご確認ください。</p>
+  </div>`;
+
+  document.getElementById('printArea').innerHTML = html;
+  window.print();
+}
+function esc(s){
+  return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ===== 起動 ===== */
+window.addEventListener('DOMContentLoaded', ()=>{
+  buildRefTables();
+  document.getElementById('projDate').value = new Date().toISOString().slice(0,10);
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(raw){
+    applyState(JSON.parse(raw));
+    const stamp = localStorage.getItem(STORAGE_KEY+'_ts');
+    if(stamp) document.getElementById('saveInfo').textContent = '最終保存：' + stamp;
+  } else {
+    addPowerRow({name:'シェイクアウトコンベア', motorKw:'15'});
+    addControlRow({name:'PLC入出力', cores:20, sq:1.25});
+    addLaborRow({name:'シェイクアウトコンベア 配線敷設・結線', category:'power', sizeClass:'small', length:20, qty:1});
+    addLaborRow({name:'PLC入出力 結線', category:'control', sizeClass:'20', length:15, qty:1});
+  }
+});
+</script>
+</body>
+</html>
